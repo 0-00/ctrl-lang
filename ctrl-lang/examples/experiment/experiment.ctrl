@@ -1,0 +1,64 @@
+
+
+main n :: int -> int
+    x := [0,1,2,3,4]
+    n |> square
+
+fact n :: int -> int
+    n | 0 => 1
+      | _ => n * fact ( n - 1 )
+
+square n :: int -> int
+    n * n
+
+/*
+
+sum A : [double] -> double
+    A | []       -> 0
+      | [x]      -> x
+      | [x:xs]   -> x + sum xs
+
+add a b : double -> double -> double
+    a + b
+
+map f A : int -> (int -> int) -> int
+    f A | _ []     -> []
+        | _ [x:xs] -> f x + map f xs
+
+main n : double -> double
+    [0,...,10] |> sum
+
+main n : double -> double
+    [0, ..., 10] |> map square
+                 |> map factorial
+                 |> sum
+
+main n : double -> double
+    [0, ..., n] |> map square
+                |> map factorial
+                |> sum
+
+main n : double -> double
+    [0, ..., n] |> square
+                |> factorial
+                |> sum
+
+reverse A : [`a] -> `a
+    A | []      -> []
+      | [x]     -> [x]
+      | [x:xs]  -> reverse xs + [x]
+
+sum A : [double] -> double
+    foldr add 0
+
+foldr f z A : (`a -> `b -> `b) -> `b -> [`a] -> `b
+    f z A | f z []     -> z
+          | f z [x:xs] -> f x (foldr f z xs)
+
+map f A : [`a] -> ([`a] -> [`b]) -> [`b]
+    f A | _ []     -> []
+        | _ [x:xs] -> f x + map f xs
+
+complex : { real : double, complex : double }
+
+*/

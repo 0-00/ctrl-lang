@@ -1,0 +1,16 @@
+main n : double -> int
+    [0, ..., 999] |> filter divides_three_or_five |> sum
+
+divides_three_or_five n : int -> bool
+    divides 3 n || divides 5 n
+
+divides k n : int -> bool
+    n | k * j, j : int -> true
+      | _              -> false
+
+filter f A : (a -> bool) -> [a] -> [a]
+    A |
+
+sum A : [int] -> int
+    A | []  -> 0
+      | _   -> A[0] + sum A[1:]
