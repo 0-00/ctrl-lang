@@ -1,0 +1,29 @@
+square n :: int -> int
+    n * n
+    
+sum A :: [int] -> int
+    A | []        => 0
+      | [x]       => x
+      | [x,...xs] => x + sum xs
+      
+sum_of_squares n :: int->int
+    A := [1, ..., n]
+    A |> square
+      |> sum
+      
+      
+/*
+  nth element of fib sequence
+*/
+
+
+fib n arr :: nat -> [nat] -> nat
+    n arr | 0 [..head, x] => x
+    n arr | _ _ => f (n-1) (arr + [arr |> sum_fib])
+    
+sum_fib A :: [nat] -> nat
+    A | [] => 1
+      | [x] => 1
+      | [...head, x, y] => x + y
+      
+ 
