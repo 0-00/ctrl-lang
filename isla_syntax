@@ -1,0 +1,34 @@
+CTRL LANG
+
+/*
+
+File contains some potential syntax for ctrl lang
+
+*/
+
+/* Insertion sort ctrl lang */
+
+_insert arr n :: int -> [int] -> [int]
+    arr          | []       => [n]
+    [x, ...xs] n | (n > x)  => _insert n [x, ..._insert n xs]
+    [x, ...xs] n | (n <= x) => [n, x, ...xs]
+
+
+// Insert, how does it work?
+a := [1,3]
+fn := _insert a
+b := fn 2
+// b = [1,2,3];
+
+/* Struct defintion ctrl lang */
+
+number := float | double | int | complex
+
+complex [
+  real      :: number 
+  imaginary :: float
+]
+
+_isFunnyNumber arr :: [int] -> bool
+    arr | |arr| == 69 => true
+              arr | _ => false
