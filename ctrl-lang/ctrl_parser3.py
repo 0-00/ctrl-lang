@@ -198,7 +198,7 @@ test_input = "foo n m::int->int\n" \
              "\ta:=n+1+2\n" \
              "\tb:=(3+4)*5\n" \
              "\t6*7\n\n" \
-             "bar i j k::double->double\n" \
+             "bar i j k::double->double->double\n" \
              "\tc:=i+8+9\n" \
              "\td:=(10+11)*12\n" \
              "\t13*14\n\n"

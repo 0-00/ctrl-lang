@@ -1,17 +1,32 @@
 
 
+
 main n :: int -> int
-    x := [0,1,2,3,4]
-    n |> square
+    x := n * n
+    y := mul n n
+    x |> fact |> sum
+
+mul x y :: int -> int -> int
+    x * y
 
 fact n :: int -> int
     n | 0 => 1
       | _ => n * fact ( n - 1 )
 
-square n :: int -> int
-    n * n
+sum A :: [int] -> int
+    A | []        => 0
+      | [x]       => x
+      | [x,...xs] => x + sum xs
+
+
+
 
 /*
+
+sum_squares n :: int -> int
+    x := [1,...,n]
+    x |> map ((x) => (x * x))
+      |> fold 0 (+)
 
 sum A : [double] -> double
     A | []       -> 0

@@ -69,10 +69,12 @@ def get_enclosed_expression(tokens, start_token, end_token):
             if openings == 0:
                 return ret
         ret.append(token)
+    raise Exception
 
 
 def preprocess_spaces(tokens):
-    return [token for token in tokens if token.gettokentype() != "SPACE"]
+    ret = [token for token in tokens if token.gettokentype() != "SPACE"]
+    return ret
 
 
 def preprocess_comments(tokens):
@@ -84,13 +86,16 @@ def preprocess_comments(tokens):
     return tokens
 
 
-def preprocess_literals(tokens):
+def preprocess_literals_expr(tokens):
     def preprocess_arrays(array_tokens):
         lp = lfind(array_tokens, "OPEN_ARRAY")
         while lp != -1:
             enclosed = get_enclosed_expression(array_tokens[lp+1:], "OPEN_ARRAY", "CLOSE_ARRAY")
             args = split(enclosed, "COMMA")
-            vector = ArrayLiteral([build_expression(expr) for expr in args])
+            if args == [[]]:
+                vector = ArrayEmptyLiteral()
+            else:
+                vector = ArrayLiteral([build_expression(preprocess_literals_expr(expr)) for expr in args])
             array_tokens = array_tokens[:lp] + [vector] + array_tokens[lp+len(enclosed)+1:][1:]
             lp = lfind(array_tokens, "OPEN_ARRAY")
         return array_tokens
@@ -99,12 +104,31 @@ def preprocess_literals(tokens):
     return tokens
 
 
+def preprocess_literals_type(tokens):
+    def preprocess_arrays(array_tokens):
+        lp = lfind(array_tokens, "OPEN_ARRAY")
+        while lp != -1:
+            enclosed = get_enclosed_expression(array_tokens[lp+1:], "OPEN_ARRAY", "CLOSE_ARRAY")
+            vector = ArrayType(build_type_expression(preprocess_literals_type(enclosed)), 1)
+            array_tokens = array_tokens[:lp] + [vector] + array_tokens[lp+len(enclosed)+1:][1:]
+            lp = lfind(array_tokens, "OPEN_ARRAY")
+        return array_tokens
+    tokens = preprocess_arrays(tokens)
+    return tokens
+
+
 def get_indent(line):
     line_iter = iter(line)
-    i = 0
-    while next(line_iter).gettokentype() == "TAB":
-        i += 1
-    return i
+    tabs = 0
+    spaces = 0
+    n = next(line_iter).gettokentype()
+    while n == "TAB" or n == "SPACE":
+        if n == "TAB":
+            tabs += 1
+        else:
+            spaces += 1
+        n = next(line_iter).gettokentype()
+    return tabs + (spaces // 4)
 
 
 def get_function_arg_count(name, functions):
@@ -117,23 +141,44 @@ def get_function_arg_count(name, functions):
 def build_type_expression(tokens):
     if len(tokens) == 1:
         token = tokens[0]
-        if token.getstr() == "double":
-            return DoubleType()
-        if token.getstr() == "int":
-            return IntegerType()
+        if type(token) is Token:
+            if token.getstr() == "double":
+                return DoubleType()
+            elif token.getstr() == "int":
+                return IntegerType()
+            else:
+                raise Exception()
+        else:
+            return token
+
+    lp = lfind(tokens, "OPEN_PAREN")
+    if lp != -1:
+        enclosed = get_enclosed_expression(tokens[lp + 1:], "OPEN_PAREN", "CLOSE_PAREN")
+        if not enclosed:
+            raise Exception()
+        tokens = tokens[:lp] + [build_type_expression(enclosed)] + tokens[lp + len(enclosed) + 2:]
+    elif rfind(tokens, "CLOSE_PAREN") != -1:
+        raise Exception()
 
     operator_index = lfind(tokens, "RIGHT_ARROW")
     if operator_index != -1:
         left = build_type_expression(tokens[:operator_index])
         right = build_type_expression(tokens[operator_index+1:])
         return Curry(right, left)
+    else:
+        # as len > 1 but no right arrow, that means you have something similar to  ... double double ...
+        raise Exception()
 
 
 def build_expression(tokens):
     if len(tokens) == 1:
         token = tokens[0]
         if type(token) is Token:
-            if token.gettokentype() == "DOUBLE":
+            if token.getstr() == "double":
+                return DoubleType()
+            elif token.getstr() == "int":
+                return IntegerType()
+            elif token.gettokentype() == "DOUBLE":
                 return DoubleLiteral(token.getstr())
             elif token.gettokentype() == "FLOAT":
                 return FloatLiteral(token.getstr())
@@ -141,8 +186,12 @@ def build_expression(tokens):
                 return IntLiteral(token.getstr())
             elif token.gettokentype() == "UNDER":
                 return WildcardLiteral()
-            else:
+            elif token.gettokentype() == "REST":
+                return RestIdentifier(token.getstr())
+            elif token.gettokentype() == "WORD":
                 return Identifier(token.getstr())
+            else:
+                raise Exception()
         else:
             return token
 
@@ -150,6 +199,8 @@ def build_expression(tokens):
     if lp != -1:
         enclosed = get_enclosed_expression(tokens[lp + 1:], "OPEN_PAREN", "CLOSE_PAREN")
         tokens = tokens[:lp] + [build_expression(enclosed)] + tokens[lp + len(enclosed) + 2:]
+    elif rfind(tokens, "CLOSE_PAREN") != -1:
+        raise Exception()
 
     operator_index = lfind(tokens, "SUB")
     if operator_index != -1:
@@ -207,7 +258,7 @@ def build_pattern_match(tokens):
 
 
 def build_statement(tokens):
-    tokens = preprocess_literals(tokens)
+    tokens = preprocess_literals_expr(tokens)
 
     assignment_operator = lfind(tokens, "ASSIGNMENT")
     if assignment_operator != -1:
@@ -255,6 +306,22 @@ class WildcardLiteral:
         return TreeNode("_", [])
 
 
+class ArrayEmptyLiteral:
+    def __init__(self):
+        pass
+
+    def to_tree(self):
+        return TreeNode("[]", [])
+
+
+class ArrayHeadTailLiteral:
+    def __init__(self):
+        pass
+
+    def to_tree(self):
+        return TreeNode("[x,...xs]", [])
+
+
 class NumberLiteral:
     def __init__(self, value):
         self.value = value
@@ -290,7 +357,15 @@ class Identifier:
         self.name = name
 
     def to_tree(self):
-        return TreeNode("`" + self.name, [])
+        return TreeNode("`" + self.name + "`", [])
+
+
+class RestIdentifier:
+    def __init__(self, name):
+        self.name = name.replace("...", "")
+
+    def to_tree(self):
+        return TreeNode("`" + self.name + "`", [])
 
 
 class Function:
@@ -338,7 +413,6 @@ class Parser:
         # self.module += "target datalayout = \"%s\"\n\n" % ""
 
     def parse(self, tokens):
-        tokens = preprocess_spaces(tokens)
         tokens = preprocess_comments(tokens)
         lines = split(tokens, "ENDL")
         while [] in lines:
@@ -351,28 +425,36 @@ class Parser:
         open_match = None
 
         for line in lines:
-            indent = get_indent(line)
-            if indent == 0:
-                colon = lfind(line, "TYPE_DEF")
-                if colon > 1:           # is function declaration
-                    name = line[0].getstr()
-                    arg_names = [arg.getstr() for arg in line[1:colon]]
-                    type_expression = build_type_expression(line[colon+1:])
-                    current_function = Function(name, arg_names, type_expression)
-                    mod.children.append(current_function)
-                elif colon == 1:        # is type declaration
-                    pass
-            else:
-                statement = build_statement(line[indent:])
-
-                if type(statement) is Match:
-                    current_function.block.append(statement)
-                    open_match = statement
-                elif type(statement) is Case:
-                    open_match.cases.append(statement)
+            try:
+                indent = get_indent(line)
+                line = preprocess_spaces(line)
+                if indent == 0:
+                    colon = lfind(line, "TYPE_DEF")
+                    if colon > 1:           # is function declaration
+                        name = line[0].getstr()
+                        arg_names = [arg.getstr() for arg in line[1:colon]]
+                        type_expression = build_type_expression(preprocess_literals_type(line[colon+1:]))
+                        current_function = Function(name, arg_names, type_expression)
+                        mod.children.append(current_function)
+                    elif colon == 1:        # is type declaration
+                        pass
                 else:
-                    current_function.block.append(statement)
-                    open_match = None
+                    statement = build_statement(line)
+
+                    if type(statement) is Match:
+                        current_function.block.append(statement)
+                        open_match = statement
+                    elif type(statement) is Case:
+                        open_match.cases.append(statement)
+                    else:
+                        current_function.block.append(statement)
+                        open_match = None
+            except Exception as e:
+                print("Error parsing below tokenized line:")
+                print_tokens(line)
+                print("Aborting...")
+                print(e)
+                return
         return mod
 
     # def save(self, filename):

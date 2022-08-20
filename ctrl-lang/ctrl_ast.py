@@ -1,13 +1,14 @@
 from ctrl_tree_drawing import *
 from ctrl_parser import *
 from ctrl_irbuilder import IRBuilder
+import math
 
 
 class BinaryOperatorAST:
-    def __init__(self, left, right, type):
+    def __init__(self, left, right):
         self.left = left
         self.right = right
-        self.type = type
+        # self.type = type
 
     def get_type(self):
         return self.left.get_type()
@@ -104,7 +105,7 @@ class PatternMatchAST:
 
     def to_tree(self):
         patterns_node = TreeNode("Patterns", [pattern.to_tree() for pattern in self.patterns])
-        blocks_node = TreeNode("Blocks", [block.to_tree() for block in self.blocks])
+        blocks_node = TreeNode("Blocks", [TreeNode("Block", [statement.to_tree() for statement in block]) for block in self.blocks])
         return TreeNode("Match", [patterns_node, blocks_node])
 
     def eval(self, builder, variable_map):
@@ -158,10 +159,32 @@ class PatternWildcardAST:
             return builder.fcmp(self.conditional_variable.eval(builder, variable_map), self.conditional_variable.eval(builder, variable_map))
 
 
+class PatternEmptyArrayAST:
+    def __init__(self, conditional_variable):
+        self.conditional_variable = conditional_variable
+
+    def to_tree(self):
+        return TreeNode("Empty Array", [])
+
+    def eval(self, builder, variable_map):
+        return ""
+
+
+class PatternArrayAST:
+    def __init__(self, conditional_variable):
+        self.conditional_variable = conditional_variable
+
+    def to_tree(self):
+        return TreeNode("Array", [])
+
+    def eval(self, builder, variable_map):
+        return ""
+
+
 class VariableAST:
-    def __init__(self, name, type):
+    def __init__(self, name):
         self.name = name
-        self.type = type
+        # self.type = type
 
     def eval(self, builder, variable_map):
         return "%\"" + self.name + "\""
@@ -170,7 +193,7 @@ class VariableAST:
         return TreeNode(self.name, [])
 
     def get_type(self):
-        return self.type
+        return None
 
     def get_return_type(self):
         return self.get_type()
@@ -185,6 +208,9 @@ class LiteralAST:
 
     def to_tree(self):
         return TreeNode(self.value, [])
+
+    def __str__(self):
+        return self.value
 
 
 class DoubleLiteralAST(LiteralAST):
@@ -207,6 +233,43 @@ class IntegerLiteralAST(LiteralAST):
 
     def eval(self, builder, variable_map):
         return builder.add(0, self.value)    # self.value
+
+
+class ArraySliceAST:
+    def __init__(self, base_array, starting_index, terminal_index):
+        self.base_array = base_array
+        self.starting_index = starting_index
+        self.terminal_index = terminal_index
+
+    def eval(self, builder, variable_map):
+        return
+
+    def get_type(self):
+        return self.base_array.get_type()
+
+    def to_tree(self):
+        return TreeNode(("Slice %s:%s" % (self.starting_index, self.terminal_index)).replace("inf", ""), [])
+
+    def __str__(self):
+        return self.base_array.name + "[%s:%s]" % (self.starting_index, self.terminal_index)
+
+
+class ArrayIndexAST:
+    def __init__(self, base_array, index):
+        self.base_array = base_array
+        self.index = index
+
+    def eval(self, builder, variable_map):
+        return
+
+    def get_type(self):
+        return self.base_array.get_type()
+
+    def to_tree(self):
+        return TreeNode("Index %s" % self.index, [])
+
+    def __str__(self):
+        return self.base_array.name + "[%s]" % self.index
 
 
 class ArrayDefinitionAST:
@@ -246,6 +309,7 @@ class FunctionApplicationAST(BinaryOperatorAST):
             left_node = TreeNode(self.left, [])
         return TreeNode("(->)", [left_node, TreeNode(self.right, [])])
 
+
 class FunctionCallAST(BinaryOperatorAST):
     def eval(self, builder, variable_map):
         return builder.function_call(self.left, [arg.eval(builder, variable_map) for arg in self.right], self.get_type())
@@ -256,13 +320,22 @@ class FunctionCallAST(BinaryOperatorAST):
     def get_return_type(self):
         return self.get_type().get_return_type()
 
+    def __str__(self):
+        return str(self.left) + "(..)"
 
-class FunctionDefinition:
+
+class FunctionDefinitionAST:
     def __init__(self, function):
         self.name = function.name
-        self.arg_list = function.arg_list
+        self.arg_list = [VariableAST(arg) for arg in function.arg_list]
         self.type_expression = function.type_expression
         self.block = []    # function.block
+
+    def __str__(self):
+        return self.name
+
+    def get_type(self):
+        return self.type_expression
 
     def to_tree(self):
         return TreeNode(self.name, [statement.to_tree() for statement in self.block])
@@ -321,36 +394,117 @@ class AST:
 
         def create_pattern(conditional_variable, pattern):
             if isinstance(pattern, NumberLiteral):
-                return PatternLiteralAST(conditional_variable, pattern.value)
+                return PatternLiteralAST(conditional_variable, pattern.value), []
             elif isinstance(pattern, WildcardLiteral):
-                return PatternWildcardAST(conditional_variable)
+                return PatternWildcardAST(conditional_variable), []
+            elif isinstance(pattern, ArrayEmptyLiteral):
+                return PatternEmptyArrayAST(conditional_variable), []
+            elif isinstance(pattern, ArrayLiteral):
+                # cases:
+                #     1. just identifiers:
+                #         [x,y,z]
+                #     2. identifiers prefixed to a tail rest:
+                #         [x,y,...tail]
+                #     3. identifiers suffixed to a head rest:
+                #         [...head, x, y]
+                #     4. identifiers both prefixed and suffixed to a mid rest:
+                #         [x,y,...mid, z]
+                # ambiguous:
+                #     1. two+ rests
+                #         [...head, ...tail]
+                def get_rest(entries):
+                    result = -1
+                    for i in range(len(entries)):
+                        if type(entries[i]) is RestIdentifier:
+                            if result > -1:
+                                result = math.inf
+                            else:
+                                result = i
+                    return result
+                block_prepend = []
+                rest_index = get_rest(pattern.entries)
+                if rest_index > len(pattern.entries):
+                    return #throw error?
+                elif rest_index == -1:
+                    # no rest
+                    for i in range(len(pattern.entries)):
+                        element = pattern.entries[i]
+                        left = traverse(element)
+                        right = ArrayIndexAST(conditional_variable, i)
+                        block_prepend.append(AssignmentAST(left, right))
+                elif rest_index == 0:
+                    # head rest
+                    # [...head, x, y, z] returns [slice(0, -3), index(-3), index(-2), index(-1)]
+                    left = traverse(pattern.entries[0])
+                    right = ArraySliceAST(conditional_variable, 0, -len(pattern.entries) + 1)
+                    block_prepend.append(AssignmentAST(left, right))
+                    if len(pattern.entries) > 0:
+                        for i in range(1, len(pattern.entries)):
+                            element = pattern.entries[i]
+                            left = traverse(element)
+                            right = ArrayIndexAST(conditional_variable, len(pattern.entries) - 1 - i)
+                            block_prepend.append(AssignmentAST(left, right))
+                elif rest_index == len(pattern.entries) - 1:
+                    # tail rest
+                    # [x, y, z, ...tail] returns [index(0), index(1), index(2), slice(3:math.inf)]
+                    left = traverse(pattern.entries[-1])
+                    right = ArraySliceAST(conditional_variable, len(pattern.entries) - 1, math.inf)
+                    block_prepend.append(AssignmentAST(left, right))
+                    for i in range(len(pattern.entries)-1):
+                            element = pattern.entries[i]
+                            left = traverse(element)
+                            right = ArrayIndexAST(conditional_variable, i)
+                            block_prepend.append(AssignmentAST(left, right))
+                else:
+                    # mid rest
+                    left = traverse(pattern.entries[0])
+                    right = ArraySliceAST(conditional_variable, 0, -len(pattern.entries) + 1)
+                    block_prepend.append(AssignmentAST(left, right))
 
-        def traverse_pipe(node, variable_scope):
+                    for i in range(rest_index):
+                            element = pattern.entries[i]
+                            left = traverse(element)
+                            right = ArrayIndexAST(conditional_variable, i)
+                            block_prepend.append(AssignmentAST(left, right))
+
+                    for i in range(rest_index+1, len(pattern.entries)):
+                            element = pattern.entries[i]
+                            left = traverse(element)
+                            right = ArrayIndexAST(conditional_variable, i)
+                            block_prepend.append(AssignmentAST(left, right))
+
+                return PatternArrayAST(conditional_variable), block_prepend
+            return None, []
+
+        def traverse_pipe(node):
             if isinstance(node.left, BinaryOperator) and node.operator == "->":
-                return traverse_pipe(node.left, variable_scope) + [traverse(node.right, variable_scope)]
+                return traverse_pipe(node.left) + [traverse(node.right)]
             else:
-                return [traverse(node.left, variable_scope), (traverse(node.right, variable_scope))]
+                return [traverse(node.left), (traverse(node.right))]
 
-        def traverse(node, variable_scope):
+        def traverse(node):
             if isinstance(node, ModuleParseTree):
                 ret = []
                 for child in node.children:
-                    traversal = traverse(child, variable_scope)
+                    traversal = traverse(child)
                     ret.append(traversal)
                 return ret
 
             if isinstance(node, Function):
                 if node.block:
-                    ret = FunctionDefinition(node)
+                    ret = FunctionDefinitionAST(node)
                     local_vars = dict(zip(node.arg_list, node.type_expression.to_list()[:-1]))
                     total_vars = {**local_vars, **variables}
                     # print(total_vars)
                     for child in node.block:
-                        ret.block.append(traverse(child, total_vars))
+                        ret.block.append(traverse(child))
                     return ret
 
             if isinstance(node, Identifier):
-                return VariableAST(node.name, variable_scope[node.name])
+                return VariableAST(node.name)
+
+            if isinstance(node, RestIdentifier):
+                return VariableAST(node.name)
 
             if isinstance(node, FloatLiteral):  # yikes
                 return DoubleLiteralAST(node.value)
@@ -359,81 +513,82 @@ class AST:
                 return IntegerLiteralAST(node.value)
 
             if isinstance(node, ArrayLiteral):
-                entries = [traverse(entry, variable_scope) for entry in node.entries]
-                return ArrayDefinitionAST(entries[0].get_return_type(), len(node.entries), entries)
+                entries = [traverse(entry) for entry in node.entries]
+                return ArrayDefinitionAST(entries[0].get_return_type() if len(entries) > 0 else None, len(node.entries), entries)
 
             if isinstance(node, Match):
                 patterns = []
                 blocks = []
-                control = traverse(node.control_variable, variable_scope)
+                control = traverse(node.control_variable)
                 for case in node.cases:
-                    patterns.append(create_pattern(control, case.pattern))
-                    blocks.append(traverse(case.block, variable_scope))
+                    p, b = create_pattern(control, case.pattern)
+                    patterns.append(p)
+                    blocks += [b + [traverse(case.block)]]
                 return PatternMatchAST(patterns, blocks)
 
             if isinstance(node, BinaryOperator):
                 if node.operator == "=":
-                    right = traverse(node.right, variable_scope)
-                    variable_scope[node.left.name] = right.get_return_type()
-                    left = traverse(node.left, variable_scope)
-                    return AssignmentAST(left, right, DoubleType())
+                    right = traverse(node.right)
+                    # variable_scope[node.left.name] = right.get_return_type()
+                    left = traverse(node.left)
+                    return AssignmentAST(left, right)#, DoubleType())
                 elif node.operator == "*":
-                    left = traverse(node.left, variable_scope)
-                    right = traverse(node.right, variable_scope)
-                    left_type = left.get_return_type()
-                    right_type = right.get_return_type()
-                    if isinstance(left_type, DoubleType) and isinstance(right_type, DoubleType):
-                        return MulfAST(left, right, DoubleType())
-                    elif isinstance(left_type, IntegerType) and isinstance(right_type, IntegerType):
-                        return MuliAST(left, right, IntegerType())
-                    else:
-                        print("* NODE INCONSISTENT TYPES ERROR : ", node, "left : ", left_type, "right : ", right_type)
-                        # if types differ, inject cast to double
-                        return None
+                    left = traverse(node.left)
+                    right = traverse(node.right)
+                    # left_type = left.get_return_type()
+                    # right_type = right.get_return_type()
+                    # if isinstance(left_type, DoubleType) and isinstance(right_type, DoubleType):
+                    #     return MulfAST(left, right, DoubleType())
+                    # elif isinstance(left_type, IntegerType) and isinstance(right_type, IntegerType):
+                    return MuliAST(left, right)#, IntegerType())
+                    # else:
+                    #     print("* NODE INCONSISTENT TYPES ERROR : ", node, "left : ", left_type, "right : ", right_type)
+                    #     # if types differ, inject cast to double
+                    #     return None
                 elif node.operator == "+":
-                    left = traverse(node.left, variable_scope)
-                    right = traverse(node.right, variable_scope)
-                    left_type = left.get_return_type()
-                    right_type = right.get_return_type()
-                    if isinstance(left_type, DoubleType) and isinstance(right_type, DoubleType):
-                        return AddfAST(left, right, DoubleType())
-                    elif isinstance(left_type, IntegerType) and isinstance(right_type, IntegerType):
-                        return AddiAST(left, right, IntegerType())
-                    else:
-                        print("+ NODE INCONSISTENT TYPES ERROR : ", node)
-                        # if types differ, inject cast to double
-                        return None
+                    left = traverse(node.left)
+                    right = traverse(node.right)
+                    # left_type = left.get_return_type()
+                    # right_type = right.get_return_type()
+                    # if isinstance(left_type, DoubleType) and isinstance(right_type, DoubleType):
+                    #     return AddfAST(left, right, DoubleType())
+                    # elif isinstance(left_type, IntegerType) and isinstance(right_type, IntegerType):
+                    return AddiAST(left, right)#, IntegerType())
+                    # else:
+                    #     print("+ NODE INCONSISTENT TYPES ERROR : ", node)
+                    #     # if types differ, inject cast to double
+                    #     return None
                 elif node.operator == "-":
-                    left = traverse(node.left, variable_scope)
-                    right = traverse(node.right, variable_scope)
-                    left_type = left.get_return_type()
-                    right_type = right.get_return_type()
-                    if isinstance(left_type, DoubleType) and isinstance(right_type, DoubleType):
-                        return SubfAST(left, right, DoubleType())
-                    elif isinstance(left_type, IntegerType) and isinstance(right_type, IntegerType):
-                        return SubiAST(left, right, IntegerType())
-                    else:
-                        print("- NODE INCONSISTENT TYPES ERROR : ", node)
-                        # if types differ, inject cast to double
-                        return None
+                    left = traverse(node.left)
+                    right = traverse(node.right)
+                    # left_type = left.get_return_type()
+                    # right_type = right.get_return_type()
+                    # if isinstance(left_type, DoubleType) and isinstance(right_type, DoubleType):
+                    #     return SubfAST(left, right, DoubleType())
+                    # elif isinstance(left_type, IntegerType) and isinstance(right_type, IntegerType):
+                    return SubiAST(left, right)#, IntegerType())
+                    # else:
+                    #     print("- NODE INCONSISTENT TYPES ERROR : ", node)
+                    #     if types differ, inject cast to double
+                    #     return None
                 elif node.operator == "\\":
-                    left = traverse(node.left, variable_scope)
-                    right = traverse(node.right, variable_scope)
-                    left_type = left.get_return_type()
-                    right_type = right.get_return_type()
-                    if isinstance(left_type, DoubleType) and isinstance(right_type, DoubleType):
-                        return DivfAST(left, right, DoubleType())
-                    elif isinstance(left_type, IntegerType) and isinstance(right_type, IntegerType):
-                        return DiviAST(left, right, IntegerType())
-                    else:
-                        print("\\ NODE INCONSISTENT TYPES ERROR : ", node)
-                        # if types differ, inject cast to double
-                        return None
+                    left = traverse(node.left)
+                    right = traverse(node.right)
+                    # left_type = left.get_return_type()
+                    # right_type = right.get_return_type()
+                    # if isinstance(left_type, DoubleType) and isinstance(right_type, DoubleType):
+                    #     return DivfAST(left, right, DoubleType())
+                    # elif isinstance(left_type, IntegerType) and isinstance(right_type, IntegerType):
+                    return DiviAST(left, right)#, IntegerType())
+                    # else:
+                    #     print("\\ NODE INCONSISTENT TYPES ERROR : ", node)
+                    #     # if types differ, inject cast to double
+                    #     return None
                 elif node.operator == "->":
-                    pipe = traverse_pipe(node, variable_scope)
+                    pipe = traverse_pipe(node)
                     function_name = pipe[0]
                     function_args = pipe[1:]
-                    return FunctionCallAST(function_name, function_args, variable_scope[function_name.name])
+                    return FunctionCallAST(function_name, function_args)
                     # print("funname:", function_name)
                     # print("funargs:", [arg.name for arg in function_args])
                     # if variable_scope[function_name.name].is_completed_by([variable_scope[arg.name] for arg in function_args]):
@@ -445,10 +600,13 @@ class AST:
                 return None
 
         variables = dict([(node.name, node.type_expression) for node in parse_tree.children])
-        self.children = traverse(parse_tree, variables)
+        self.children = traverse(parse_tree)
+
+    def build_tree(self):
+        return TreeNode("module", [child.to_tree() for child in self.children])
 
     def __str__(self):
-        return "\nAST TREE\n\n" + str(TreeDrawing(TreeNode("module", [child.to_tree() for child in self.children]))) + "\n\n"
+        return "\nAST TREE\n\n" + str(TreeDrawing(self.build_tree())) + "\n\n"
 
     def eval(self):
         body = ""

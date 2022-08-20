@@ -33,7 +33,7 @@ class ArrayType:
         return "[%s]" % str(self.type)
 
     def __eq__(self, other):
-        return isinstance(other, DoubleType) and self.type == other.type
+        return isinstance(other, ArrayType) and self.type == other.type
 
     def to_tree(self):
         return TreeNode(str(self), [])

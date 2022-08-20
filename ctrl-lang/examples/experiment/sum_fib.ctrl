@@ -1,0 +1,12 @@
+main n :: int -> int
+    [0,..., n] |> fib |> sum
+
+fib n :: int -> int
+    n | 0 => 0
+      | 1 => 1
+      | _ => fib (n - 1) + fib (n - 2)
+
+sum A :: [int] -> int
+    A | []        => 0
+      | [x]       => x
+      | [x,...xs] => x + sum xs

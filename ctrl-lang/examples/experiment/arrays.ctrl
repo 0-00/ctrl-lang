@@ -1,0 +1,38 @@
+/*
+   Define an array as a series of literals
+*/
+
+x := [0, 1, 2, 3, 4, 5]
+
+/*
+   Define an int array with range notation
+*/
+
+x := [0,...,5]
+
+
+/*
+   Define an array as a concat
+*/
+
+a := [0, 1, 2]
+b := [3, 4, 5]
+
+x := [...a, ...b]
+
+
+/*
+   Define an array with prepends and appends
+*/
+
+a := [2,3]
+
+x := [0, 1,...a, 4, 5]
+
+/*
+   Define an array with destructuring
+*/
+
+a := [-1, 0, 1, 2, 3, 4, 5, 6]
+
+[b, ...x] := a
