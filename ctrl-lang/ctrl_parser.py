@@ -1,6 +1,7 @@
 from rply import Token
 from ctrl_tree_drawing import *
 from ctrl_types import *
+from compile_error import CompileException
 
 
 def print_tokens(tokens):
@@ -174,7 +175,9 @@ def build_expression(tokens):
     if len(tokens) == 1:
         token = tokens[0]
         if type(token) is Token:
-            if token.getstr() == "double":
+            if token is None:
+                raise Exception()
+            elif token.getstr() == "double":
                 return DoubleType()
             elif token.getstr() == "int":
                 return IntegerType()
@@ -191,7 +194,7 @@ def build_expression(tokens):
             elif token.gettokentype() == "WORD":
                 return Identifier(token.getstr())
             else:
-                raise Exception()
+                raise CompileException("Could not parse token", token.getsourcepos().lineno, token.getsourcepos().colno, len(token.getstr()))
         else:
             return token
 
@@ -200,7 +203,7 @@ def build_expression(tokens):
         enclosed = get_enclosed_expression(tokens[lp + 1:], "OPEN_PAREN", "CLOSE_PAREN")
         tokens = tokens[:lp] + [build_expression(enclosed)] + tokens[lp + len(enclosed) + 2:]
     elif rfind(tokens, "CLOSE_PAREN") != -1:
-        raise Exception()
+        raise CompileException("No closing parenthesis", tokens[lp].getsourcepos())
 
     operator_index = lfind(tokens, "SUB")
     if operator_index != -1:
@@ -258,15 +261,19 @@ def build_pattern_match(tokens):
 
 
 def build_statement(tokens):
+
+    contains = lambda x: x != 1
+
     tokens = preprocess_literals_expr(tokens)
 
     assignment_operator = lfind(tokens, "ASSIGNMENT")
-    if assignment_operator != -1:
-        return build_assignment(tokens)
-
     right_arrow_operator = lfind(tokens, "THICK_RIGHT_ARROW")
     vert_operator = lfind(tokens, "VERT")
-    if right_arrow_operator != -1 and vert_operator != -1 and vert_operator < right_arrow_operator:
+
+    if contains(assignment_operator) and not contains(right_arrow_operator):
+        return build_assignment(tokens)
+
+    if contains(right_arrow_operator) and contains(vert_operator) and vert_operator < right_arrow_operator and not contains(assignment_operator):
         return build_pattern_match(tokens)
 
     return build_expression(tokens)
@@ -425,36 +432,29 @@ class Parser:
         open_match = None
 
         for line in lines:
-            try:
-                indent = get_indent(line)
-                line = preprocess_spaces(line)
-                if indent == 0:
-                    colon = lfind(line, "TYPE_DEF")
-                    if colon > 1:           # is function declaration
-                        name = line[0].getstr()
-                        arg_names = [arg.getstr() for arg in line[1:colon]]
-                        type_expression = build_type_expression(preprocess_literals_type(line[colon+1:]))
-                        current_function = Function(name, arg_names, type_expression)
-                        mod.children.append(current_function)
-                    elif colon == 1:        # is type declaration
-                        pass
-                else:
-                    statement = build_statement(line)
+            indent = get_indent(line)
+            line = preprocess_spaces(line)
+            if indent == 0:
+                colon = lfind(line, "TYPE_DEF")
+                if colon > 1:           # is function declaration
+                    name = line[0].getstr()
+                    arg_names = [arg.getstr() for arg in line[1:colon]]
+                    type_expression = build_type_expression(preprocess_literals_type(line[colon+1:]))
+                    current_function = Function(name, arg_names, type_expression)
+                    mod.children.append(current_function)
+                elif colon == 1:        # is type declaration
+                    pass
+            else:
+                statement = build_statement(line)
 
-                    if type(statement) is Match:
-                        current_function.block.append(statement)
-                        open_match = statement
-                    elif type(statement) is Case:
-                        open_match.cases.append(statement)
-                    else:
-                        current_function.block.append(statement)
-                        open_match = None
-            except Exception as e:
-                print("Error parsing below tokenized line:")
-                print_tokens(line)
-                print("Aborting...")
-                print(e)
-                return
+                if type(statement) is Match:
+                    current_function.block.append(statement)
+                    open_match = statement
+                elif type(statement) is Case:
+                    open_match.cases.append(statement)
+                else:
+                    current_function.block.append(statement)
+                    open_match = None
         return mod
 
     # def save(self, filename):
