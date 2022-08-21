@@ -1,9 +1,13 @@
 from colorama import Fore, Back, Style
+from rply.token import SourcePosition
+
 from ctrl_lexer import Lexer
 from ctrl_parser import *
 from rply import Token
+from compile_error import CompileException
 from ctrl_tree_drawing import *
 import random
+import logging
 from functools import reduce
 
 
@@ -15,11 +19,27 @@ def count_tokens(tokens, name):
     return sum(1 for token in tokens if token.name == name)
 
 
+def log_exception(e, input):
+    logging.error(" ".join(map(lambda tok: tok.gettokentype(), input)), exc_info=True)
+
+
 def assert_exception(function, input):
     try:
         function(input)
     except:
         return True
+    else:
+        return False
+
+
+def assert_compile_exception(function, input):
+    try:
+        function(input)
+    except CompileException:
+        return True
+    except Exception as e:
+        log_exception(e, input)
+        return False
     else:
         return False
 
@@ -30,6 +50,20 @@ def assert_exception_if_output(condition):
             output = function(input)
         except:
             return True
+        else:
+            return not condition(output)
+    return x
+
+
+def assert_compile_exception_if_output(condition):
+    def x(function, input):
+        try:
+            output = function(input)
+        except CompileException:
+            return True
+        except Exception as e:
+            log_exception(e, input)
+            return False
         else:
             return not condition(output)
     return x
@@ -51,7 +85,7 @@ def generate_expression_input():
 
     # generated input currently missing preprocessed literals
     valid_token_list = ["OPEN_PAREN", "CLOSE_PAREN", "PIPE", "ADD", "SUB", "MUL", "DIV", "DOUBLE", "FLOAT", "INTEGER", "WORD"]
-    return [Token(token_type, "a", None) for token_type in random.choices(valid_token_list, k=random.randrange(100))]
+    return [Token(token_type, "a", source_pos=SourcePosition(0,0,0)) for token_type in random.choices(valid_token_list, k=random.randrange(100))]
 
 
 def generate_type_expression_input():
@@ -61,7 +95,7 @@ def generate_type_expression_input():
 
     # generated input currently missing preprocessed literals
     valid_token_list = ["OPEN_PAREN", "CLOSE_PAREN", "DOUBLE", "INTEGER", "RIGHT_ARROW"]
-    return [Token(token_type, "a", None) for token_type in random.choices(valid_token_list, k=random.randrange(100))]
+    return [Token(token_type, "a", source_pos=SourcePosition(0,0,0)) for token_type in random.choices(valid_token_list, k=random.randrange(100))]
 
 
 def generate_statement_input():
@@ -71,7 +105,7 @@ def generate_statement_input():
 
     # generated input currently missing preprocessed literals
     valid_token_list = ["OPEN_PAREN", "CLOSE_PAREN", "PIPE", "ADD", "SUB", "MUL", "DIV", "DOUBLE", "FLOAT", "INTEGER", "WORD", "ASSIGNMENT", "THICK_RIGHT_ARROW", "VERT"]
-    return [Token(token_type, "a", None) for token_type in random.choices(valid_token_list, k=random.randrange(100))]
+    return [Token(token_type, "a", source_pos=SourcePosition(0,0,0)) for token_type in random.choices(valid_token_list, k=random.randrange(100))]
 
 
 class TestingSuite:
@@ -133,8 +167,8 @@ class TestableUnit:
             i += 1
             print()
             # if False:
-            for f in failed:
-                print(Back.RED + str([token.gettokentype() for token in f]))
+            # for f in failed:
+            #     print(Back.RED + str([token.gettokentype() for token in f]))
         print()
 
 
@@ -157,8 +191,10 @@ class UnitTest:
         return self.iterations
 
     def run(self, function_to_test, input):
+        logging.info(input)
         return self.test_function(function_to_test, input)
 
+logging.basicConfig(filename='app.log', filemode='w', format='\n%(levelname)s - %(message)s')
 
 # Assert that the below fail:
 #
@@ -188,54 +224,55 @@ has_null_children = lambda node: type(node) is BinaryOperator\
                                  or has_null_children(node.right))
 has_more_tokens_than = lambda token, count: lambda input_tokens: count_tokens(input_tokens, token) > count
 
-test_suite = TestingSuite().add(TestableUnit(build_statement, generate_statement_input).add_tests(
+test_suite = TestingSuite().add(TestableUnit(build_expression, generate_expression_input).add_tests(
     {
-        "function": if_input(has_more_tokens_than("VERT", 1), then=assert_exception),
-        "name": "No more than one | token",
-        "iterations": 1000
-    },
-    {
-        "function": if_input(has_more_tokens_than("ASSIGNMENT", 1), then=assert_exception),
-        "name": "No more than one := token",
-        "iterations": 1000
-    },
-    {
-        "function": if_input(has_more_tokens_than("THICK_RIGHT_ARROW", 1), then=assert_exception),
-        "name": "No more than one => token",
-        "iterations": 1000
-    }
-)).add(TestableUnit(build_expression, generate_expression_input).add_tests(
-    {
-        "function": if_input(has_unbalanced_brackets, then=assert_exception),
+        "function": if_input(has_unbalanced_brackets, then=assert_compile_exception),
         "name": "Parentheses balance",
         "iterations": 1000
     },
     {
-        "function": if_input(has_empty_brackets, then=assert_exception),
+        "function": if_input(has_empty_brackets, then=assert_compile_exception),
         "name": "No empty brackets",
         "iterations": 1000
     },
     {
-        "function": assert_exception_if_output(has_null_children),
+        "function": assert_compile_exception_if_output(has_null_children),
         "name": "No null children",
         "iterations": 1000
     }
-)).add(TestableUnit(build_type_expression, generate_type_expression_input).add_tests(
-    {
-        "function": if_input(has_unbalanced_brackets, then=assert_exception),
-        "name": "Parentheses balance",
-        "iterations": 1000
-    },
-    {
-        "function": if_input(has_empty_brackets, then=assert_exception),
-        "name": "No empty brackets",
-        "iterations": 1000
-    },
-    {
-        "function": assert_exception_if_output(has_null_children),
-        "name": "No null children",
-        "iterations": 1000
-    }
-))
+))\
+#     .add(TestableUnit(build_statement, generate_statement_input).add_tests(
+#     {
+#         "function": if_input(has_more_tokens_than("VERT", 1), then=assert_compile_exception),
+#         "name": "No more than one | token",
+#         "iterations": 1000
+#     },
+#     {
+#         "function": if_input(has_more_tokens_than("ASSIGNMENT", 1), then=assert_compile_exception),
+#         "name": "No more than one := token",
+#         "iterations": 1000
+#     },
+#     {
+#         "function": if_input(has_more_tokens_than("THICK_RIGHT_ARROW", 1), then=assert_compile_exception),
+#         "name": "No more than one => token",
+#         "iterations": 1000
+#     }
+# )).add(TestableUnit(build_type_expression, generate_type_expression_input).add_tests(
+#     {
+#         "function": if_input(has_unbalanced_brackets, then=assert_compile_exception),
+#         "name": "Parentheses balance",
+#         "iterations": 1000
+#     },
+#     {
+#         "function": if_input(has_empty_brackets, then=assert_compile_exception),
+#         "name": "No empty brackets",
+#         "iterations": 1000
+#     },
+#     {
+#         "function": assert_compile_exception_if_output(has_null_children),
+#         "name": "No null children",
+#         "iterations": 1000
+#     }
+# ))
 
 test_suite.run_tests()
