@@ -68,9 +68,17 @@ def get_enclosed_expression(tokens, start_token, end_token):
         elif token.gettokentype() == end_token:
             openings -= 1
             if openings == 0:
+                if not ret:
+                    raise CompileException("Empty parenthesis",
+                                           tokens[0].getsourcepos().lineno,
+                                           tokens[0].getsourcepos().colno,
+                                           len(tokens[0].getstr()))
                 return ret
         ret.append(token)
-    raise Exception
+    raise CompileException("Cannot resolve parenthesis",
+                           tokens[0].getsourcepos().lineno,
+                           tokens[0].getsourcepos().colno,
+                           len(tokens[0].getstr()))
 
 
 def preprocess_spaces(tokens):
@@ -148,7 +156,10 @@ def build_type_expression(tokens):
             elif token.getstr() == "int":
                 return IntegerType()
             else:
-                raise Exception()
+                raise CompileException("Unknown type: " + token.getstr(),
+                                       token.getsourcepos().lineno,
+                                       token.getsourcepos().colno,
+                                       len(token.getstr()))
         else:
             return token
 
@@ -175,9 +186,7 @@ def build_expression(tokens):
     if len(tokens) == 1:
         token = tokens[0]
         if type(token) is Token:
-            if token is None:
-                raise Exception()
-            elif token.getstr() == "double":
+            if token.getstr() == "double":
                 return DoubleType()
             elif token.getstr() == "int":
                 return IntegerType()
@@ -194,50 +203,42 @@ def build_expression(tokens):
             elif token.gettokentype() == "WORD":
                 return Identifier(token.getstr())
             else:
-                raise CompileException("Could not parse token", token.getsourcepos().lineno, token.getsourcepos().colno, len(token.getstr()))
+                raise CompileException("Could not parse token",
+                                       token.getsourcepos().lineno,
+                                       token.getsourcepos().colno,
+                                       len(token.getstr()))
+        elif token is None:
+            raise Exception("'None' type found where token expected")
         else:
             return token
 
     lp = lfind(tokens, "OPEN_PAREN")
+    rp = rfind(tokens, "CLOSE_PAREN")
     if lp != -1:
         enclosed = get_enclosed_expression(tokens[lp + 1:], "OPEN_PAREN", "CLOSE_PAREN")
         tokens = tokens[:lp] + [build_expression(enclosed)] + tokens[lp + len(enclosed) + 2:]
-    elif rfind(tokens, "CLOSE_PAREN") != -1:
-        raise CompileException("No closing parenthesis", tokens[lp].getsourcepos())
+    elif rp != -1:
+        raise CompileException("No opening parenthesis",
+                               tokens[rp].getsourcepos().lineno,
+                               tokens[rp].getsourcepos().colno,
+                               len(tokens[rp].getstr()))
 
-    operator_index = lfind(tokens, "SUB")
-    if operator_index != -1:
-        left = build_expression(tokens[:operator_index])
-        right = build_expression(tokens[operator_index+1:])
-        return BinaryOperator(left, right, "-")
+    binops = [('SUB', '-'), ('ADD', '+'), ('MUL', '*'), ('DIV', '/'), ('PIPE', '->')]
+    for pair in binops:
+        binop_text = pair[0]
+        operator_symbol = pair[1]
+        operator_index = lfind(tokens, binop_text)
+        if operator_index != -1:
+            if 0 < operator_index < len(tokens) - 1:
+                left = build_expression(tokens[:operator_index])
+                right = build_expression(tokens[operator_index + 1:])
+                return BinaryOperator(left, right, operator_symbol)
+            else:
+                raise CompileException("Operation %s missing operands" % operator_symbol,
+                                       tokens[operator_index].getsourcepos().lineno,
+                                       tokens[operator_index].getsourcepos().colno,
+                                       len(tokens[operator_index].getstr()))
 
-    operator_index = lfind(tokens, "ADD")
-    if operator_index != -1:
-        left = build_expression(tokens[:operator_index])
-        right = build_expression(tokens[operator_index+1:])
-        return BinaryOperator(left, right, "+")
-
-    operator_index = lfind(tokens, "DIV")
-    if operator_index != -1:
-        left = build_expression(tokens[:operator_index])
-        right = build_expression(tokens[operator_index+1:])
-        return BinaryOperator(left, right, "/")
-
-    operator_index = lfind(tokens, "MUL")
-    if operator_index != -1:
-        left = build_expression(tokens[:operator_index])
-        right = build_expression(tokens[operator_index+1:])
-        return BinaryOperator(left, right, "*")
-
-    operator_index = lfind(tokens, "PIPE")
-    if operator_index != -1:
-        left = build_expression(tokens[:operator_index])
-        right = build_expression(tokens[operator_index+1:])
-        return BinaryOperator(right, left, "->")
-
-    if len(tokens) == 2:
-        return BinaryOperator(build_expression(tokens[:1]),
-                              build_expression(tokens[1:2]), "->")
     return BinaryOperator(build_expression(tokens[:-1]),
                           build_expression(tokens[-1:]), "->")
 
@@ -261,7 +262,6 @@ def build_pattern_match(tokens):
 
 
 def build_statement(tokens):
-
     contains = lambda x: x != 1
 
     tokens = preprocess_literals_expr(tokens)
