@@ -1,6 +1,6 @@
 from ctrl_tree_drawing import *
-from ctrl_parser import *
-from ctrl_irbuilder import IRBuilder
+from parser import *
+from irbuilder import IRBuilder
 import math
 
 

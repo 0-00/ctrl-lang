@@ -1,6 +1,3 @@
-
-
-
 main n :: int -> int
     x := n * n
     y := mul n n

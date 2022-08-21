@@ -1,14 +1,12 @@
 from colorama import Fore, Back, Style
 from rply.token import SourcePosition
 
-from ctrl_lexer import Lexer
-from ctrl_parser import *
+from parser import *
 from rply import Token
 from compile_error import CompileException
 from ctrl_tree_drawing import *
 import random
 import logging
-from functools import reduce
 
 
 def identity(tokens, name):
@@ -194,7 +192,7 @@ class UnitTest:
         logging.info(input)
         return self.test_function(function_to_test, input)
 
-logging.basicConfig(filename='app.log', filemode='w', format='\n%(levelname)s - %(message)s')
+logging.basicConfig(filename='../app.log', filemode='w', format='\n%(levelname)s - %(message)s')
 
 # Assert that the below fail:
 #

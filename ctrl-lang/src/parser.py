@@ -1,6 +1,6 @@
 from rply import Token
 from ctrl_tree_drawing import *
-from ctrl_types import *
+from types import *
 from compile_error import CompileException
 
 

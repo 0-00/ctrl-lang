@@ -1,10 +1,10 @@
-from ctrl_lexer import Lexer
-from ctrl_parser import Parser
-from ctrl_ast import AST
-from ctrl_typechecker import TypeChecker
+from lexer import Lexer
+from parser import Parser
+from ast import AST
+from typechecker import TypeChecker
 from compile_error import CompileException
 
-from colorama import Fore, Back, Style
+from colorama import Fore, Style
 
 # from ctrl_exec import Execute
 # from ctrl_compile import Compile
