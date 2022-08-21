@@ -85,7 +85,7 @@ def generate_expression_input():
 
     # generated input currently missing preprocessed literals
     valid_token_list = ["OPEN_PAREN", "CLOSE_PAREN", "PIPE", "ADD", "SUB", "MUL", "DIV", "DOUBLE", "FLOAT", "INTEGER", "WORD"]
-    return [Token(token_type, "a", source_pos=SourcePosition(0,0,0)) for token_type in random.choices(valid_token_list, k=random.randrange(100))]
+    return [Token(token_type, "a", source_pos=SourcePosition(0,0,0)) for token_type in random.choices(valid_token_list, k=random.randrange(1,100))]
 
 
 def generate_type_expression_input():
@@ -210,6 +210,7 @@ logging.basicConfig(filename='app.log', filemode='w', format='\n%(levelname)s - 
 # ✅ Input containing more than one assignment token
 # ✅ Input containing more than one vert token
 # ✅ Input containing more than one thick right arrow token
+# ❌ Input contains tokens on LHS and RHS of assignment token, if it exists.
 # ❌ Input contains one of vert token xor thick right arrow token
 # ❌ Output not of assignment data type when input containing assignment token
 # ❌ Does not pass vert, assignment, or thick right arrow tokens to build_expression
@@ -228,17 +229,17 @@ test_suite = TestingSuite().add(TestableUnit(build_expression, generate_expressi
     {
         "function": if_input(has_unbalanced_brackets, then=assert_compile_exception),
         "name": "Parentheses balance",
-        "iterations": 1000
+        "iterations": 10000
     },
     {
         "function": if_input(has_empty_brackets, then=assert_compile_exception),
         "name": "No empty brackets",
-        "iterations": 1000
+        "iterations": 10000
     },
     {
         "function": assert_compile_exception_if_output(has_null_children),
         "name": "No null children",
-        "iterations": 1000
+        "iterations": 10000
     }
 ))\
 #     .add(TestableUnit(build_statement, generate_statement_input).add_tests(

@@ -55,7 +55,7 @@ def rfind(tokens, token_type):
         if type(token) is Token:
             if token.gettokentype() == token_type:
                 return index
-        index += 1
+        index -= 1
     return -1
 
 
@@ -183,6 +183,36 @@ def build_type_expression(tokens):
 
 
 def build_expression(tokens):
+    if len(tokens) == 0:
+        raise Exception("No tokens to build expression")
+
+    lp = lfind(tokens, "OPEN_PAREN")
+    rp = rfind(tokens, "CLOSE_PAREN")
+    if lp != -1 and rp != -1 and lp + 1 < len(tokens) - 1:
+        enclosed = get_enclosed_expression(tokens[lp + 1:], "OPEN_PAREN", "CLOSE_PAREN")
+
+        if not enclosed:
+            raise CompileException("Empty parenthesis",
+                                   tokens[lp].getsourcepos().lineno,
+                                   tokens[lp].getsourcepos().colno,
+                                   2)
+
+        prefix = tokens[:lp]
+        body = [build_expression(enclosed)]
+        postfix = tokens[lp + len(enclosed) + 2:]
+
+        tokens = prefix + body + postfix
+    elif lp == -1 and rp != -1:
+        raise CompileException("No opening parenthesis",
+                               tokens[rp].getsourcepos().lineno,
+                               tokens[rp].getsourcepos().colno,
+                               len(tokens[rp].getstr()))
+    elif lp != -1 and rp == -1:
+        raise CompileException("No closing parenthesis",
+                               tokens[lp].getsourcepos().lineno,
+                               tokens[lp].getsourcepos().colno,
+                               len(tokens[lp].getstr()))
+
     if len(tokens) == 1:
         token = tokens[0]
         if type(token) is Token:
@@ -203,7 +233,7 @@ def build_expression(tokens):
             elif token.gettokentype() == "WORD":
                 return Identifier(token.getstr())
             else:
-                raise CompileException("Could not parse token",
+                raise CompileException("Unexpected token",
                                        token.getsourcepos().lineno,
                                        token.getsourcepos().colno,
                                        len(token.getstr()))
@@ -212,16 +242,7 @@ def build_expression(tokens):
         else:
             return token
 
-    lp = lfind(tokens, "OPEN_PAREN")
-    rp = rfind(tokens, "CLOSE_PAREN")
-    if lp != -1:
-        enclosed = get_enclosed_expression(tokens[lp + 1:], "OPEN_PAREN", "CLOSE_PAREN")
-        tokens = tokens[:lp] + [build_expression(enclosed)] + tokens[lp + len(enclosed) + 2:]
-    elif rp != -1:
-        raise CompileException("No opening parenthesis",
-                               tokens[rp].getsourcepos().lineno,
-                               tokens[rp].getsourcepos().colno,
-                               len(tokens[rp].getstr()))
+        raise Exception("Expected single token, found:", token)
 
     binops = [('SUB', '-'), ('ADD', '+'), ('MUL', '*'), ('DIV', '/'), ('PIPE', '->')]
     for pair in binops:
@@ -240,7 +261,7 @@ def build_expression(tokens):
                                        len(tokens[operator_index].getstr()))
 
     return BinaryOperator(build_expression(tokens[:-1]),
-                          build_expression(tokens[-1:]), "->")
+                          build_expression([tokens[-1]]), "->")
 
 
 def build_assignment(tokens):
