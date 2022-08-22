@@ -2,7 +2,7 @@ from lexer import Lexer
 from parser import Parser
 from ast import AST
 from typechecker import TypeChecker
-from compile_error import CompileException
+from util.compile_error import CompileException
 
 from colorama import Fore, Style
 
@@ -21,8 +21,6 @@ def main():
 
     try:
         parse_tree = Parser().parse([token for token in tokens])
-        if parse_tree is None:
-            return
         print(parse_tree)
         ast = AST(parse_tree)
         print(ast)

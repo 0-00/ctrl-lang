@@ -3,8 +3,8 @@ from rply.token import SourcePosition
 
 from parser import *
 from rply import Token
-from compile_error import CompileException
-from ctrl_tree_drawing import *
+from util.compile_error import CompileException
+from util.tree_drawing import *
 import random
 import logging
 
@@ -223,7 +223,23 @@ has_null_children = lambda node: type(node) is BinaryOperator\
                                  or has_null_children(node.right))
 has_more_tokens_than = lambda token, count: lambda input_tokens: count_tokens(input_tokens, token) > count
 
-test_suite = TestingSuite().add(TestableUnit(build_expression, generate_expression_input).add_tests(
+test_suite = TestingSuite().add(TestableUnit(build_statement, generate_statement_input).add_tests(
+    {
+        "function": if_input(has_more_tokens_than("VERT", 1), then=assert_compile_exception),
+        "name": "No more than one | token",
+        "iterations": 1000
+    },
+    {
+        "function": if_input(has_more_tokens_than("ASSIGNMENT", 1), then=assert_compile_exception),
+        "name": "No more than one := token",
+        "iterations": 1000
+    },
+    {
+        "function": if_input(has_more_tokens_than("THICK_RIGHT_ARROW", 1), then=assert_compile_exception),
+        "name": "No more than one => token",
+        "iterations": 1000
+    }
+)).add(TestableUnit(build_expression, generate_expression_input).add_tests(
     {
         "function": if_input(has_unbalanced_brackets, then=assert_compile_exception),
         "name": "Parentheses balance",
@@ -239,39 +255,22 @@ test_suite = TestingSuite().add(TestableUnit(build_expression, generate_expressi
         "name": "No null children",
         "iterations": 10000
     }
-))\
-#     .add(TestableUnit(build_statement, generate_statement_input).add_tests(
-#     {
-#         "function": if_input(has_more_tokens_than("VERT", 1), then=assert_compile_exception),
-#         "name": "No more than one | token",
-#         "iterations": 1000
-#     },
-#     {
-#         "function": if_input(has_more_tokens_than("ASSIGNMENT", 1), then=assert_compile_exception),
-#         "name": "No more than one := token",
-#         "iterations": 1000
-#     },
-#     {
-#         "function": if_input(has_more_tokens_than("THICK_RIGHT_ARROW", 1), then=assert_compile_exception),
-#         "name": "No more than one => token",
-#         "iterations": 1000
-#     }
-# )).add(TestableUnit(build_type_expression, generate_type_expression_input).add_tests(
-#     {
-#         "function": if_input(has_unbalanced_brackets, then=assert_compile_exception),
-#         "name": "Parentheses balance",
-#         "iterations": 1000
-#     },
-#     {
-#         "function": if_input(has_empty_brackets, then=assert_compile_exception),
-#         "name": "No empty brackets",
-#         "iterations": 1000
-#     },
-#     {
-#         "function": assert_compile_exception_if_output(has_null_children),
-#         "name": "No null children",
-#         "iterations": 1000
-#     }
-# ))
+)).add(TestableUnit(build_type_expression, generate_type_expression_input).add_tests(
+    {
+        "function": if_input(has_unbalanced_brackets, then=assert_compile_exception),
+        "name": "Parentheses balance",
+        "iterations": 1000
+    },
+    {
+        "function": if_input(has_empty_brackets, then=assert_compile_exception),
+        "name": "No empty brackets",
+        "iterations": 1000
+    },
+    {
+        "function": assert_compile_exception_if_output(has_null_children),
+        "name": "No null children",
+        "iterations": 1000
+    }
+))
 
 test_suite.run_tests()

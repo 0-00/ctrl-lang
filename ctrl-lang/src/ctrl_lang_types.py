@@ -1,4 +1,4 @@
-from ctrl_tree_drawing import *
+from util.tree_drawing import *
 
 
 class Curry:

@@ -1,7 +1,7 @@
 from rply import Token
-from ctrl_tree_drawing import *
-from types import *
-from compile_error import CompileException
+from util.tree_drawing import *
+from ctrl_lang_types import Curry, DoubleType, IntegerType
+from util.compile_error import CompileException
 
 
 def print_tokens(tokens):
@@ -21,7 +21,7 @@ def print_tokens(tokens):
 
 def split(tokens, token_type):
     indices = find_all(tokens, token_type)
-    left_indices = [0] + [i+1 for i in indices]
+    left_indices = [0] + [i + 1 for i in indices]
     right_indices = indices + [len(tokens)]
     ret = []
     for i in range(len(left_indices)):
@@ -90,7 +90,7 @@ def preprocess_comments(tokens):
     lp = lfind(tokens, "OPEN_COMMENT")
     while lp != -1:
         rp = lfind(tokens, "CLOSE_COMMENT")
-        tokens = tokens[:lp] + tokens[rp+1:]
+        tokens = tokens[:lp] + tokens[rp + 1:]
         lp = lfind(tokens, "OPEN_COMMENT")
     return tokens
 
@@ -99,13 +99,13 @@ def preprocess_literals_expr(tokens):
     def preprocess_arrays(array_tokens):
         lp = lfind(array_tokens, "OPEN_ARRAY")
         while lp != -1:
-            enclosed = get_enclosed_expression(array_tokens[lp+1:], "OPEN_ARRAY", "CLOSE_ARRAY")
+            enclosed = get_enclosed_expression(array_tokens[lp + 1:], "OPEN_ARRAY", "CLOSE_ARRAY")
             args = split(enclosed, "COMMA")
             if args == [[]]:
                 vector = ArrayEmptyLiteral()
             else:
                 vector = ArrayLiteral([build_expression(preprocess_literals_expr(expr)) for expr in args])
-            array_tokens = array_tokens[:lp] + [vector] + array_tokens[lp+len(enclosed)+1:][1:]
+            array_tokens = array_tokens[:lp] + [vector] + array_tokens[lp + len(enclosed) + 1:][1:]
             lp = lfind(array_tokens, "OPEN_ARRAY")
         return array_tokens
 
@@ -117,11 +117,12 @@ def preprocess_literals_type(tokens):
     def preprocess_arrays(array_tokens):
         lp = lfind(array_tokens, "OPEN_ARRAY")
         while lp != -1:
-            enclosed = get_enclosed_expression(array_tokens[lp+1:], "OPEN_ARRAY", "CLOSE_ARRAY")
+            enclosed = get_enclosed_expression(array_tokens[lp + 1:], "OPEN_ARRAY", "CLOSE_ARRAY")
             vector = ArrayType(build_type_expression(preprocess_literals_type(enclosed)), 1)
-            array_tokens = array_tokens[:lp] + [vector] + array_tokens[lp+len(enclosed)+1:][1:]
+            array_tokens = array_tokens[:lp] + [vector] + array_tokens[lp + len(enclosed) + 1:][1:]
             lp = lfind(array_tokens, "OPEN_ARRAY")
         return array_tokens
+
     tokens = preprocess_arrays(tokens)
     return tokens
 
@@ -175,7 +176,7 @@ def build_type_expression(tokens):
     operator_index = lfind(tokens, "RIGHT_ARROW")
     if operator_index != -1:
         left = build_type_expression(tokens[:operator_index])
-        right = build_type_expression(tokens[operator_index+1:])
+        right = build_type_expression(tokens[operator_index + 1:])
         return Curry(right, left)
     else:
         # as len > 1 but no right arrow, that means you have something similar to  ... double double ...
@@ -237,12 +238,18 @@ def build_expression(tokens):
                                        token.getsourcepos().lineno,
                                        token.getsourcepos().colno,
                                        len(token.getstr()))
-        elif token is None:
-            raise Exception("'None' type found where token expected")
-        else:
+        elif type(token) is DoubleType \
+                or type(token) is IntegerType \
+                or type(token) is DoubleLiteral \
+                or type(token) is FloatLiteral \
+                or type(token) is IntLiteral \
+                or type(token) is WildcardLiteral \
+                or type(token) is RestIdentifier \
+                or type(token) is Identifier \
+                or type(token) is BinaryOperator:
             return token
-
-        raise Exception("Expected single token, found:", token)
+        else:
+            raise Exception("'%s' type found where token or literal expected" % type(token))
 
     binops = [('SUB', '-'), ('ADD', '+'), ('MUL', '*'), ('DIV', '/'), ('PIPE', '->')]
     for pair in binops:
@@ -266,14 +273,33 @@ def build_expression(tokens):
 
 def build_assignment(tokens):
     assignment_operator = lfind(tokens, "ASSIGNMENT")
-    return BinaryOperator(Identifier(tokens[0].getstr()), build_expression(tokens[assignment_operator+1:]), "=")
+    return BinaryOperator(Identifier(tokens[0].getstr()), build_expression(tokens[assignment_operator + 1:]), "=")
 
 
 def build_pattern_match(tokens):
     right_arrow_operator = lfind(tokens, "THICK_RIGHT_ARROW")
     vert_operator = lfind(tokens, "VERT")
-    pattern = build_expression(tokens[vert_operator+1:right_arrow_operator])
-    block = build_expression(tokens[right_arrow_operator+1:])
+
+    if vert_operator != 0:
+        raise CompileException("Tokens before case unexpected",
+                               tokens[vert_operator].getsourcepos().lineno,
+                               0,
+                               vert_operator)
+
+    if vert_operator + 1 >= right_arrow_operator:
+        raise CompileException("No pattern to match",
+                               tokens[vert_operator].getsourcepos().lineno,
+                               tokens[vert_operator].getsourcepos().colno,
+                               len(tokens[vert_operator].getstr()))
+
+    if right_arrow_operator >= len(tokens) - 2:
+        raise CompileException("No pattern expression",
+                               tokens[right_arrow_operator].getsourcepos().lineno,
+                               tokens[right_arrow_operator].getsourcepos().colno,
+                               len(tokens[right_arrow_operator].getstr()))
+
+    pattern = build_expression(tokens[vert_operator + 1:right_arrow_operator])
+    block = build_expression(tokens[right_arrow_operator + 1:])
     case = Case(pattern, block)
     if vert_operator > 0:
         control_variable = build_expression(tokens[:vert_operator])
@@ -283,7 +309,7 @@ def build_pattern_match(tokens):
 
 
 def build_statement(tokens):
-    contains = lambda x: x != 1
+    contains = lambda x: x != -1
 
     tokens = preprocess_literals_expr(tokens)
 
@@ -291,10 +317,13 @@ def build_statement(tokens):
     right_arrow_operator = lfind(tokens, "THICK_RIGHT_ARROW")
     vert_operator = lfind(tokens, "VERT")
 
+    print(assignment_operator, right_arrow_operator, vert_operator)
+
     if contains(assignment_operator) and not contains(right_arrow_operator):
         return build_assignment(tokens)
 
-    if contains(right_arrow_operator) and contains(vert_operator) and vert_operator < right_arrow_operator and not contains(assignment_operator):
+    if contains(right_arrow_operator) and contains(
+            vert_operator) and vert_operator < right_arrow_operator and not contains(assignment_operator):
         return build_pattern_match(tokens)
 
     return build_expression(tokens)
@@ -420,7 +449,8 @@ class ModuleParseTree:
         self.children = []
 
     def __str__(self):
-        return "\nPARSE TREE\n\n" + str(TreeDrawing(TreeNode("module", [child.to_tree() for child in self.children]))) + "\n\n"
+        return "\nPARSE TREE\n\n" + str(
+            TreeDrawing(TreeNode("module", [child.to_tree() for child in self.children]))) + "\n\n"
 
 
 class Parser:
@@ -457,13 +487,13 @@ class Parser:
             line = preprocess_spaces(line)
             if indent == 0:
                 colon = lfind(line, "TYPE_DEF")
-                if colon > 1:           # is function declaration
+                if colon > 1:  # is function declaration
                     name = line[0].getstr()
                     arg_names = [arg.getstr() for arg in line[1:colon]]
-                    type_expression = build_type_expression(preprocess_literals_type(line[colon+1:]))
+                    type_expression = build_type_expression(preprocess_literals_type(line[colon + 1:]))
                     current_function = Function(name, arg_names, type_expression)
                     mod.children.append(current_function)
-                elif colon == 1:        # is type declaration
+                elif colon == 1:  # is type declaration
                     pass
             else:
                 statement = build_statement(line)
